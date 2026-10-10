@@ -9,11 +9,11 @@ internal sealed class SettingsForm : Form
     private readonly Action saved;
     private readonly Settings original;
     private readonly List<string> favorites;
-    private readonly TextBox search = new() { Name = "Search", AccessibleName = "搜索时区", PlaceholderText = "搜索城市、时区名称或 ID", Dock = DockStyle.Fill };
+    private readonly TextBox search = new() { Name = "Search", AccessibleName = "搜索时区", PlaceholderText = "搜索城市、时区名称或 ID", BorderStyle = BorderStyle.None, Dock = DockStyle.Fill, Margin = new Padding(3, 0, 3, 8) };
     private readonly ListBox available = new WrappingZoneListBox { Name = "AvailableZones", AccessibleName = "可用时区", Dock = DockStyle.Fill };
     private readonly ListBox selected = new WrappingZoneListBox { Name = "FavoriteZones", AccessibleName = "收藏时区", Dock = DockStyle.Fill };
-    private readonly ComboBox theme = new() { Name = "Theme", AccessibleName = "外观主题", DropDownStyle = ComboBoxStyle.DropDownList, Width = 145 };
-    private readonly CheckBox startup = new() { Name = "StartWithWindows", Text = "登录 Windows 时启动", AutoSize = true };
+    private readonly ComboBox theme = new FluentComboBox { Name = "Theme", AccessibleName = "外观主题", Width = 160 };
+    private readonly CheckBox startup = new FluentCheckBox { Name = "StartWithWindows", Text = "登录 Windows 时启动" };
     private readonly Label availableHeading = Heading("可用时区");
     private readonly Label favoritesHeading = Heading("收藏时区");
     private readonly Label status = new() { Name = "Status", AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AccessibleRole = AccessibleRole.StaticText };
@@ -22,7 +22,7 @@ internal sealed class SettingsForm : Form
     private readonly Button remove = ActionButton("删除", "RemoveFavorite");
     private readonly Button up = ActionButton("上移", "MoveUp");
     private readonly Button down = ActionButton("下移", "MoveDown");
-    private readonly Button save = ActionButton("保存", "SaveSettings");
+    private readonly Button save = ActionButton("保存", "SaveSettings", true);
     private readonly Button cancel = ActionButton("取消", "CancelSettings");
     private readonly Button languageButton = ActionButton("English", "LanguageToggle");
     private readonly Label title = new() { AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
@@ -30,7 +30,9 @@ internal sealed class SettingsForm : Form
     private readonly Label appearanceLabel = new() { AutoSize = true, Margin = new Padding(3, 7, 10, 3) };
     private readonly Label languageLabel = new() { AutoSize = true, Margin = new Padding(3, 7, 10, 3) };
     private string languageChoice;
+    private bool statusIsError;
     private readonly Font titleFont;
+    private readonly Font headingFont;
 
     public SettingsForm(AppController controller, Action saved, Icon icon)
     {
@@ -50,7 +52,7 @@ internal sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Padding = new Padding(24);
 
-        var viewport = new Panel { Name = "SettingsViewport", Dock = DockStyle.Fill, AutoScroll = true };
+        var viewport = new Panel { Name = "SettingsViewport", Dock = DockStyle.Fill, AutoScroll = true, Visible = false };
         var root = new TableLayoutPanel { Name = "SettingsContent", ColumnCount = 1, RowCount = 7, Margin = Padding.Empty };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -62,6 +64,8 @@ internal sealed class SettingsForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         titleFont = new Font(Font.FontFamily, 18, FontStyle.Bold);
         title.Font = titleFont;
+        headingFont = new Font(Font, FontStyle.Bold);
+        availableHeading.Font = favoritesHeading.Font = headingFont;
         root.Controls.Add(title, 0, 0);
         root.Controls.Add(current, 0, 1);
 
@@ -70,13 +74,13 @@ internal sealed class SettingsForm : Form
         lists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         var left = ListPanel(); left.Margin = new Padding(0, 0, 12, 0);
         left.Controls.Add(availableHeading, 0, 0);
-        left.Controls.Add(search, 0, 1);
-        left.Controls.Add(available, 0, 2);
+        left.Controls.Add(new FluentFrame(search), 0, 1);
+        left.Controls.Add(new FluentFrame(available), 0, 2);
         left.Controls.Add(Buttons(add), 0, 3);
         var right = ListPanel(); right.Margin = new Padding(12, 0, 0, 0);
         right.Controls.Add(favoritesHeading, 0, 0);
         right.Controls.Add(orderHint, 0, 1);
-        right.Controls.Add(selected, 0, 2);
+        right.Controls.Add(new FluentFrame(selected), 0, 2);
         right.Controls.Add(Buttons(up, down, remove), 0, 3);
         lists.Controls.Add(left, 0, 0); lists.Controls.Add(right, 1, 0);
         bool? stacked = null;
@@ -102,27 +106,24 @@ internal sealed class SettingsForm : Form
         root.Controls.Add(lists, 0, 2);
 
         theme.Items.AddRange(["跟随系统", "浅色", "深色"]);
-        theme.DrawMode = DrawMode.OwnerDrawFixed;
-        theme.DrawItem += (_, e) =>
-        {
-            if (e.Index < 0) return;
-            e.DrawBackground();
-            var color = (e.State & DrawItemState.Selected) != 0 ? SystemColors.HighlightText : theme.ForeColor;
-            TextRenderer.DrawText(e.Graphics, theme.Items[e.Index]?.ToString() ?? "", theme.Font, e.Bounds, color, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            e.DrawFocusRectangle();
-        };
         theme.SelectedIndex = original.Theme switch { "light" => 1, "dark" => 2, _ => 0 };
         startup.Checked = original.StartWithWindows;
-        var preferences = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0, 18, 0, 0) };
-        preferences.Controls.Add(appearanceLabel);
-        preferences.Controls.Add(theme);
-        startup.Margin = new Padding(28, 7, 0, 3);
-        preferences.Controls.Add(startup);
+        var preferences = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 16, 0, 0) };
+        preferences.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        preferences.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        preferences.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        appearanceLabel.Anchor = languageLabel.Anchor = AnchorStyles.Left;
+        appearanceLabel.Margin = languageLabel.Margin = new Padding(3, 4, 16, 4);
+        theme.Anchor = languageButton.Anchor = AnchorStyles.Left;
+        theme.Margin = languageButton.Margin = new Padding(0, 4, 0, 4);
+        startup.Anchor = AnchorStyles.Left;
+        startup.Margin = new Padding(28, 4, 0, 4);
+        preferences.Controls.Add(appearanceLabel, 0, 0);
+        preferences.Controls.Add(theme, 1, 0);
+        preferences.Controls.Add(startup, 2, 0);
+        preferences.Controls.Add(languageLabel, 0, 1);
+        preferences.Controls.Add(languageButton, 1, 1);
         root.Controls.Add(preferences, 0, 3);
-        var languageRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0, 8, 0, 0) };
-        languageRow.Controls.Add(languageLabel);
-        languageRow.Controls.Add(languageButton);
-        root.Controls.Add(languageRow, 0, 4);
         root.Controls.Add(status, 0, 5);
         var footer = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = Padding.Empty };
         footer.Controls.Add(cancel); footer.Controls.Add(save);
@@ -173,7 +174,27 @@ internal sealed class SettingsForm : Form
             Theme.Apply(controller.GetSettings().Theme);
             AppText.Language = controller.GetSettings().Language;
         };
-        Shown += (_, _) => search.Focus();
+        // Tiling window managers resize the window right after it appears. Content stays hidden until the size
+        // has been stable briefly, so the lists lay out once at the final size instead of visibly jumping.
+        var settle = new System.Windows.Forms.Timer { Interval = 50 };
+        long shownAt = 0;
+        void Reveal()
+        {
+            settle.Dispose();
+            if (viewport.Visible) return;
+            viewport.Visible = true;
+            Theme.ApplyNative(viewport);
+            search.Focus();
+        }
+        settle.Tick += (_, _) => Reveal();
+        Shown += (_, _) => { shownAt = Environment.TickCount64; settle.Start(); };
+        SizeChanged += (_, _) =>
+        {
+            if (viewport.Visible || shownAt == 0) return;
+            settle.Stop();
+            if (Environment.TickCount64 - shownAt < 300) settle.Start(); else Reveal();
+        };
+        FormClosed += (_, _) => settle.Dispose();
         ApplyLanguage();
         if (controller.Notice is { } notice) SetStatus(notice, true);
         save.Enabled = !controller.IsReadOnly;
@@ -215,19 +236,7 @@ internal sealed class SettingsForm : Form
     }
 
     private static Label Heading(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(3, 0, 3, 8) };
-    private static Button ActionButton(string text, string name) => new ThemeButton() { Text = text, Name = name, AccessibleName = text, AutoSize = true, MinimumSize = new Size(82, 34), Padding = new Padding(8, 2, 8, 2), UseVisualStyleBackColor = true };
-    private sealed class ThemeButton : Button
-    {
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            if (Enabled || !Theme.IsDark || SystemInformation.HighContrast) return;
-            var bounds = Rectangle.Inflate(ClientRectangle, -2, -2);
-            using var background = new SolidBrush(BackColor);
-            e.Graphics.FillRectangle(background, bounds);
-            TextRenderer.DrawText(e.Graphics, Text, Font, bounds, Color.FromArgb(150, 150, 150), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-        }
-    }
+    private static Button ActionButton(string text, string name, bool accent = false) => new FluentButton { Text = text, Name = name, AccessibleName = text, Accent = accent };
     private static TableLayoutPanel ListPanel()
     {
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
@@ -298,7 +307,8 @@ internal sealed class SettingsForm : Form
     {
         Theme.Apply(SelectedTheme);
         Theme.Paint(this);
-        Invalidate(true);
+        if (!Theme.HighContrast) current.ForeColor = orderHint.ForeColor = Theme.Colors.TextSecondary;
+        SetStatus(status.Text, statusIsError);
     }
     private void PreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
@@ -332,6 +342,7 @@ internal sealed class SettingsForm : Form
             SystemEvents.UserPreferenceChanged -= PreferenceChanged;
             SystemEvents.TimeChanged -= TimeChanged;
             titleFont.Dispose();
+            headingFont.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -354,6 +365,7 @@ internal sealed class SettingsForm : Form
     private void SetStatus(string message, bool error = false)
     {
         status.Text = message;
-        status.ForeColor = error && !SystemInformation.HighContrast ? (Theme.IsDark ? Color.Salmon : Color.Maroon) : (Theme.IsDark ? Color.WhiteSmoke : SystemColors.ControlText);
+        statusIsError = error;
+        status.ForeColor = Theme.HighContrast ? SystemColors.ControlText : error ? Theme.Colors.Critical : Theme.Colors.TextSecondary;
     }
 }

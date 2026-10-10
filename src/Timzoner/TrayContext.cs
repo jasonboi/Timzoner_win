@@ -12,6 +12,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly RegisteredWaitHandle activationWait;
     private readonly RegisteredWaitHandle shutdownWait;
     private readonly Icon appIcon;
+    private readonly Icon trayIcon;
     private SettingsForm? settingsForm;
     private bool disposed;
     private static string T(string chinese, string english) => AppText.Get(chinese, english);
@@ -23,7 +24,10 @@ internal sealed class TrayContext : ApplicationContext
         _ = dispatcher.Handle;
         dispatcher.FormClosed += (_, _) => ExitThread();
         appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? (Icon)SystemIcons.Application.Clone();
-        tray = new NotifyIcon { Icon = appIcon, Text = "Timzoner", ContextMenuStrip = menu, Visible = true };
+        trayIcon = Icon.ExtractIcon(Application.ExecutablePath, 0, SystemInformation.SmallIconSize.Width) ?? (Icon)appIcon.Clone();
+        menu.HandleCreated += (_, _) => Theme.StyleMenuWindow(menu);
+        menu.ItemAdded += (_, e) => { if (e.Item is ToolStripMenuItem) e.Item.Padding = new Padding(0, menu.LogicalToDeviceUnits(3), 0, menu.LogicalToDeviceUnits(3)); };
+        tray = new NotifyIcon { Icon = trayIcon, Text = "Timzoner", ContextMenuStrip = menu, Visible = true };
         menu.Opening += (_, _) => RefreshMenu();
         tray.DoubleClick += (_, _) => OpenSettings();
         activationWait = ThreadPool.RegisterWaitForSingleObject(activation, (_, _) => Dispatch(OpenSettings), null, Timeout.Infinite, false);
@@ -137,6 +141,7 @@ internal sealed class TrayContext : ApplicationContext
             tray.Dispose();
             settingsForm?.Dispose();
             appIcon.Dispose();
+            trayIcon.Dispose();
             menu.Dispose();
             dispatcher.Dispose();
         }
