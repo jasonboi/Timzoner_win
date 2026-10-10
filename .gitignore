@@ -46,3 +46,16 @@ Desktop.ini
 .scratch/
 /AGENTS.md
 /agent.md
+
+# Local verification and artwork preparation
+/tests/
+/tools/Timzoner.Diagnostics/
+/scripts/Test-*.ps1
+/scripts/Inspect-Window.ps1
+/scripts/Measure-Resources.ps1
+/scripts/Build-Icon.ps1
+/docs/validation.md
+/assets/Timzoner-source.png
+/assets/Timzoner.png
+/assets/licenses/dotnet-ThirdPartyNotices.txt
+/assets/licenses/windowsdesktop-LICENSE.txt

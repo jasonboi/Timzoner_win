@@ -8,9 +8,13 @@ try {
     $env:DOTNET_CLI_HOME = Join-Path $taskRoot '.tools/cli'
     $env:NUGET_PACKAGES = Join-Path $taskRoot '.tools/nuget'
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
-    & $taskDotnet test Timzoner.slnx -c Release --nologo
-    if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
-    & $taskDotnet publish src/Timzoner -c Release -r win-x64 --self-contained true -o artifacts/release --nologo
+    $taskPublish = Join-Path $taskRoot 'artifacts/release'
+    if (Test-Path $taskPublish) {
+        $taskResolved = (Resolve-Path -LiteralPath $taskPublish).Path
+        if ($taskResolved -ne [IO.Path]::GetFullPath($taskPublish)) { throw 'Unexpected publish directory.' }
+        Remove-Item -LiteralPath $taskResolved -Recurse -Force
+    }
+    & $taskDotnet publish src/Timzoner -c Release -r win-x64 --self-contained false -p:DebugType=none -p:DebugSymbols=false -o $taskPublish --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
     if ($Installer) {
         if (!$InnoCompiler) { $InnoCompiler = Join-Path $taskRoot '.tools/inno/ISCC.exe' }

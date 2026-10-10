@@ -6,11 +6,15 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>../../assets/Timzoner.ico</ApplicationIcon>
     <PublishTrimmed>false</PublishTrimmed>
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Timzoner.Core/Timzoner.Core.csproj" /></ItemGroup>
   <ItemGroup>
-    <Content Include="../../assets/licenses/*" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../assets/licenses/dotnet-LICENSE.txt" Link="licenses/dotnet-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

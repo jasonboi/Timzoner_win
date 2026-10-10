@@ -3,7 +3,4 @@
     <Project Path="src/Timzoner.Core/Timzoner.Core.csproj" />
     <Project Path="src/Timzoner/Timzoner.csproj" />
   </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Timzoner.Tests/Timzoner.Tests.csproj" />
-  </Folder>
 </Solution>

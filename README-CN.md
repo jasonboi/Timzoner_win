@@ -13,4 +13,10 @@
 - 可选择登录 Windows 时自动启动。
 - 遵循 Windows 夏令时规则，切换后读取系统状态确认结果。
 - 本地保存偏好设置，升级时保留配置。
-- 按用户安装，随包携带 .NET 运行时。
+- 按用户安装，应用安装包体积小。
+
+## 运行环境
+
+需要 [.NET 10 Desktop Runtime，Windows x64](https://dotnet.microsoft.com/zh-cn/download/dotnet/10.0)。在页面的 .NET Desktop Runtime 区域选择 Windows x64 安装程序，无需安装 SDK 或 ASP.NET Core Runtime。
+
+如果缺少运行时，启动 Timzoner 时会出现 .NET 错误提示并提供下载入口。安装 Desktop Runtime 后重新打开 Timzoner 即可。运行时默认安装在 `C:\Program Files\dotnet\`，可供其他 .NET 桌面应用共用。
