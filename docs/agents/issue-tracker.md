@@ -1,6 +1,6 @@
 # Local Markdown issue tracker
 
-任务与规格保存在 `.scratch/<feature-slug>/`，该目录纳入 Git，发布到公开仓库时也会公开。
+任务与规格保存在本地 `.scratch/<feature-slug>/`，该目录由 `.gitignore` 忽略，不纳入 Git。根目录 `AGENTS.md` 同样只保留在本地。
 
 - 功能规格使用 `spec.md`。
 - 实施任务各自使用 `issues/<NN>-<slug>.md`，从 `01` 开始编号。

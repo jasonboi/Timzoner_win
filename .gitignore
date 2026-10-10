@@ -42,4 +42,7 @@ Desktop.ini
 *.p12
 *.key
 
-# .scratch contains versioned specs and issues.
+# Local planning and agent instructions
+.scratch/
+/AGENTS.md
+/agent.md
