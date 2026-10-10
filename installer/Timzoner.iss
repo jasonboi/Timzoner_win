@@ -38,6 +38,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 
 [Run]
 Filename: "{app}\Timzoner.exe"; Parameters: "--settings"; Description: "Launch Timzoner"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Timzoner.exe"; Flags: nowait skipifnotsilent
 
 [Code]
 function InitializeUninstall(): Boolean;

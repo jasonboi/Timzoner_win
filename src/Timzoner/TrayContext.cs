@@ -15,6 +15,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly Icon trayIcon;
     private SettingsForm? settingsForm;
     private bool disposed;
+    private bool checkingUpdate;
     private static string T(string chinese, string english) => AppText.Get(chinese, english);
     private static string ZoneName(Zone zone) => AppText.IsEnglish ? zone.EnglishName : zone.Name;
 
@@ -85,6 +86,7 @@ internal sealed class TrayContext : ApplicationContext
     {
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(T("配置…", "Settings…"), null, (_, _) => OpenSettings());
+        menu.Items.Add(checkingUpdate ? T("正在检查更新…", "Checking for updates…") : T("检查更新…", "Check for updates…"), null, async (_, _) => await CheckUpdatesAsync()).Enabled = !checkingUpdate;
         menu.Items.Add(T("Windows 日期和时间设置", "Windows date and time settings"), null, (_, _) => OpenSystemSettings());
         menu.Items.Add(T("退出", "Exit"), null, (_, _) => { if (!controller.IsSwitching) ExitThread(); }).Enabled = !controller.IsSwitching;
     }
@@ -106,6 +108,48 @@ internal sealed class TrayContext : ApplicationContext
         var message = result.Message;
         if (automatic == true) message += T(" Windows 自动时区已开启，可能覆盖本次选择，可从菜单打开系统设置。", " Automatic time zone is enabled in Windows and may override this choice. Open Windows settings from the tray menu to review it.");
         tray.ShowBalloonTip(5000, "Timzoner", message, result.Status is SwitchStatus.Success or SwitchStatus.Unchanged ? ToolTipIcon.Info : ToolTipIcon.Warning);
+    }
+
+    private async Task CheckUpdatesAsync()
+    {
+        if (checkingUpdate) return;
+        checkingUpdate = true;
+        try
+        {
+            ReleaseInfo? release;
+            try { release = await Updater.GetLatestAsync(); }
+            catch (Exception ex) when (IsNetworkError(ex)) { Notify(T("无法检查更新。", "Unable to check for updates. ") + ex.Message, ToolTipIcon.Warning); return; }
+            if (disposed) return;
+            if (release is null) { Notify(T("无法识别最新版本信息。", "The latest release information could not be read."), ToolTipIcon.Warning); return; }
+            var current = Updater.CurrentVersion.ToString(3);
+            if (!UpdateFeed.IsNewer(release, Updater.CurrentVersion)) { Notify(T($"已是最新版本 {current}。", $"Timzoner {current} is up to date."), ToolTipIcon.Info); return; }
+            var latest = release.Version.ToString(3);
+            if (!Updater.CanInstall(release))
+            {
+                if (MessageBox.Show(T($"发现新版本 {latest}，但没有可校验的安装包。是否打开下载页面？", $"Version {latest} is available, but no verifiable installer was found. Open the download page?"),
+                    "Timzoner", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes) OpenUrl(release.PageUrl);
+                return;
+            }
+            if (MessageBox.Show(T($"发现新版本 {latest}，当前版本 {current}。\n是否下载并安装？安装期间 Timzoner 会退出，完成后自动重新启动。",
+                    $"Version {latest} is available. You have {current}.\nDownload and install it now? Timzoner closes during the update and restarts afterward."),
+                "Timzoner", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            string installer;
+            try { installer = await Updater.DownloadAsync(release); }
+            catch (Exception ex) when (IsNetworkError(ex)) { Notify(T("下载更新失败。", "Unable to download the update. ") + ex.Message, ToolTipIcon.Warning); return; }
+            if (disposed) return;
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(installer, "/SILENT /SUPPRESSMSGBOXES /NORESTART") { UseShellExecute = true }); }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException) { Notify(T("无法启动安装程序。", "Unable to start the installer. ") + ex.Message, ToolTipIcon.Warning); }
+        }
+        finally { checkingUpdate = false; }
+    }
+
+    private static bool IsNetworkError(Exception ex) => ex is HttpRequestException or TaskCanceledException or IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException;
+    private void Notify(string message, ToolTipIcon icon) { if (!disposed) tray.ShowBalloonTip(5000, "Timzoner", message, icon); }
+    private static void OpenUrl(string url)
+    {
+        if (!url.StartsWith("https://github.com/", StringComparison.Ordinal)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception) { }
     }
 
     private void OpenSettings()
