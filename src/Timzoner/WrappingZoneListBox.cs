@@ -70,8 +70,9 @@ internal sealed class WrappingZoneListBox : ListBox
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        // IndexFromPoint can return Items.Count below the last item, so validate the range before asking for bounds.
         int index = IndexFromPoint(e.Location);
-        if (index != NoMatches && !GetItemRectangle(index).Contains(e.Location)) index = NoMatches;
+        if (index < 0 || index >= Items.Count || !GetItemRectangle(index).Contains(e.Location)) index = NoMatches;
         SetHot(index);
     }
 
