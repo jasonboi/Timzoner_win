@@ -1,0 +1,45 @@
+# .NET build output
+**/[Bb]in/
+**/[Oo]bj/
+artifacts/
+publish/
+dist/
+TestResults/
+**/coverage/
+*.coverage
+*.coveragexml
+
+# IDE and user state
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+# Installer output
+installer/Output/
+*.msi
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+
+# Local tooling and diagnostics
+.tools/
+.tmp/
+*.log
+*.dmp
+Thumbs.db
+Desktop.ini
+
+# Credentials and signing material
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+
+# .scratch contains versioned specs and issues.
