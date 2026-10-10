@@ -189,24 +189,33 @@ internal static class Theme
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
             if (!e.Item.Selected || !e.Item.Enabled) return;
+            // Items can be wider than the visible drop-down, so inset against the owner's client width.
             int inset = e.Item.Owner?.LogicalToDeviceUnits(4) ?? 4;
-            var bounds = new RectangleF(inset, 0, e.Item.Width - inset * 2 - 1, e.Item.Height - 1);
-            FillRounded(e.Graphics, bounds, inset, Colors.MenuHover);
+            int width = (e.Item.Owner?.ClientSize.Width ?? e.Item.Width) - e.Item.Bounds.X;
+            FillRounded(e.Graphics, new RectangleF(inset - e.Item.Bounds.X, 0, width - inset * 2 + e.Item.Bounds.X - 1, e.Item.Height - 1), inset, Colors.MenuHover);
         }
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             var color = e.Item.Enabled ? Colors.Text : Colors.TextSecondary;
-            TextRenderer.DrawText(e.Graphics, e.Text, e.TextFont, e.TextRectangle, color, e.TextFormat);
+            var bounds = e.TextRectangle;
+            if (e.Item is ToolStripMenuItem) bounds.Offset(TextShift(e.Item), 0);
+            TextRenderer.DrawText(e.Graphics, e.Text, e.TextFont, bounds, color, e.TextFormat);
         }
 
         protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
         {
+            // Center the check between the highlight's left edge and the shifted text.
             var bounds = e.ImageRectangle;
-            float size = Math.Min(bounds.Width, bounds.Height);
-            var box = new RectangleF(bounds.X + (bounds.Width - size) / 2, bounds.Y + (bounds.Height - size) / 2, size, size);
-            DrawCheck(e.Graphics, box, e.Item.Enabled ? Colors.Text : Colors.TextSecondary, Math.Max(1.5f, size / 10));
+            float left = e.Item.Owner?.LogicalToDeviceUnits(4) ?? 4;
+            float right = bounds.Right + TextShift(e.Item);
+            float size = e.Item.Owner?.LogicalToDeviceUnits(14) ?? 14;
+            var box = new RectangleF(left + (right - left - size) / 2, bounds.Y + (bounds.Height - size) / 2, size, size);
+            DrawCheck(e.Graphics, box, e.Item.Enabled ? Colors.Text : Colors.TextSecondary, Math.Max(1.5f, size / 9));
         }
+
+        // The drop-down image margin has a fixed width, so text moves right while painting to leave room for the check mark.
+        private static int TextShift(ToolStripItem item) => item.Owner?.LogicalToDeviceUnits(8) ?? 8;
 
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
         {

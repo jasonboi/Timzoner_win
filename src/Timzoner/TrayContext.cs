@@ -26,7 +26,7 @@ internal sealed class TrayContext : ApplicationContext
         appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? (Icon)SystemIcons.Application.Clone();
         trayIcon = Icon.ExtractIcon(Application.ExecutablePath, 0, SystemInformation.SmallIconSize.Width) ?? (Icon)appIcon.Clone();
         menu.HandleCreated += (_, _) => Theme.StyleMenuWindow(menu);
-        menu.ItemAdded += (_, e) => { if (e.Item is ToolStripMenuItem) e.Item.Padding = new Padding(0, menu.LogicalToDeviceUnits(3), 0, menu.LogicalToDeviceUnits(3)); };
+        menu.ItemAdded += (_, e) => { if (e.Item is ToolStripMenuItem) e.Item.Padding = new Padding(menu.LogicalToDeviceUnits(8), menu.LogicalToDeviceUnits(3), 0, menu.LogicalToDeviceUnits(3)); };
         tray = new NotifyIcon { Icon = trayIcon, Text = "Timzoner", ContextMenuStrip = menu, Visible = true };
         menu.Opening += (_, _) => RefreshMenu();
         tray.DoubleClick += (_, _) => OpenSettings();
