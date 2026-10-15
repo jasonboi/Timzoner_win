@@ -358,7 +358,7 @@ internal sealed class SettingsForm : Form
     }
     private void Save()
     {
-        var result = controller.Save(original with { FavoriteTimeZoneIds = [.. favorites], Theme = SelectedTheme, Language = languageChoice, StartWithWindows = startup.Checked });
+        var result = controller.Save(original with { FavoriteTimeZoneIds = [.. favorites], Theme = SelectedTheme, Language = languageChoice, StartWithWindows = startup.Checked, AutomaticTimeZone = controller.GetSettings().AutomaticTimeZone });
         if (!result.Success) { SetStatus(result.Message, true); return; }
         saved(); Close();
     }

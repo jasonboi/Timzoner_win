@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Net.NetworkInformation;
 using Timzoner.Core;
 
 namespace Timzoner;
@@ -13,6 +14,9 @@ internal sealed class TrayContext : ApplicationContext
     private readonly RegisteredWaitHandle shutdownWait;
     private readonly Icon appIcon;
     private readonly Icon trayIcon;
+    private readonly NetworkTimeZoneLookup networkLookup = new();
+    private readonly NetworkTimeZoneSwitcher automaticSwitcher;
+    private bool networkSubscribed;
     private SettingsForm? settingsForm;
     private bool disposed;
     private bool checkingUpdate;
@@ -22,6 +26,13 @@ internal sealed class TrayContext : ApplicationContext
     public TrayContext(AppController controller, EventWaitHandle activation, EventWaitHandle shutdown, bool showSettings)
     {
         this.controller = controller;
+        automaticSwitcher = new NetworkTimeZoneSwitcher(controller, networkLookup, result =>
+        {
+            if (disposed) return;
+            RefreshMenu();
+            if (result.Status is not (SwitchStatus.Success or SwitchStatus.Unchanged))
+                Notify(result.Message, ToolTipIcon.Warning);
+        });
         _ = dispatcher.Handle;
         dispatcher.FormClosed += (_, _) => ExitThread();
         appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? (Icon)SystemIcons.Application.Clone();
@@ -38,6 +49,7 @@ internal sealed class TrayContext : ApplicationContext
         RefreshMenu();
         if (controller.Notice is { } notice) tray.ShowBalloonTip(5000, "Timzoner", notice, ToolTipIcon.Warning);
         if (showSettings) dispatcher.BeginInvoke(OpenSettings);
+        dispatcher.BeginInvoke(UpdateAutomaticMode);
     }
 
     private void OnTimeChanged(object? sender, EventArgs e) => Dispatch(RefreshMenu);
@@ -85,6 +97,14 @@ internal sealed class TrayContext : ApplicationContext
     private void AddCommands()
     {
         menu.Items.Add(new ToolStripSeparator());
+        var automatic = new ToolStripMenuItem(T("自动切换时区", "Automatic time zone"))
+        {
+            Name = "AutomaticTimeZone",
+            Checked = controller.GetSettings().AutomaticTimeZone,
+            Enabled = !controller.IsReadOnly
+        };
+        automatic.Click += (_, _) => ToggleAutomaticMode();
+        menu.Items.Add(automatic);
         menu.Items.Add(T("配置…", "Settings…"), null, (_, _) => OpenSettings());
         menu.Items.Add(checkingUpdate ? T("正在检查更新…", "Checking for updates…") : T("检查更新…", "Check for updates…"), null, async (_, _) => await CheckUpdatesAsync()).Enabled = !checkingUpdate;
         menu.Items.Add(T("Windows 日期和时间设置", "Windows date and time settings"), null, (_, _) => OpenSystemSettings());
@@ -93,6 +113,7 @@ internal sealed class TrayContext : ApplicationContext
 
     private async Task SwitchAsync(string id)
     {
+        automaticSwitcher.CancelPending();
         var operation = controller.SwitchAsync(id);
         RefreshMenu();
         var result = await operation;
@@ -108,6 +129,54 @@ internal sealed class TrayContext : ApplicationContext
         var message = result.Message;
         if (automatic == true) message += T(" Windows 自动时区已开启，可能覆盖本次选择，可从菜单打开系统设置。", " Automatic time zone is enabled in Windows and may override this choice. Open Windows settings from the tray menu to review it.");
         tray.ShowBalloonTip(5000, "Timzoner", message, result.Status is SwitchStatus.Success or SwitchStatus.Unchanged ? ToolTipIcon.Info : ToolTipIcon.Warning);
+    }
+
+    private void ToggleAutomaticMode()
+    {
+        var settings = controller.GetSettings();
+        var previewLanguage = AppText.Language;
+        var result = controller.Save(settings with { AutomaticTimeZone = !settings.AutomaticTimeZone });
+        AppText.Language = previewLanguage;
+        if (!result.Success) Notify(result.Message, ToolTipIcon.Warning);
+        else UpdateAutomaticMode();
+        RefreshMenu();
+    }
+
+    private void UpdateAutomaticMode()
+    {
+        var enabled = controller.GetSettings().AutomaticTimeZone;
+        if (enabled && !networkSubscribed)
+        {
+            NetworkChange.NetworkAddressChanged += OnNetworkChanged;
+            NetworkChange.NetworkAvailabilityChanged += OnNetworkAvailabilityChanged;
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            networkSubscribed = true;
+        }
+        else if (!enabled) UnsubscribeNetwork();
+        automaticSwitcher.NetworkChanged(IsNetworkAvailable());
+        automaticSwitcher.SetEnabled(enabled);
+    }
+
+    private static bool IsNetworkAvailable()
+    {
+        try { return NetworkInterface.GetIsNetworkAvailable(); }
+        catch (NetworkInformationException) { return false; }
+    }
+
+    private void OnNetworkChanged(object? sender, EventArgs e) => Dispatch(() => automaticSwitcher.NetworkChanged(IsNetworkAvailable()));
+    private void OnNetworkAvailabilityChanged(object? sender, NetworkAvailabilityEventArgs e) => OnNetworkChanged(sender, e);
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Resume) OnNetworkChanged(sender, EventArgs.Empty);
+    }
+
+    private void UnsubscribeNetwork()
+    {
+        if (!networkSubscribed) return;
+        NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
+        NetworkChange.NetworkAvailabilityChanged -= OnNetworkAvailabilityChanged;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        networkSubscribed = false;
     }
 
     private async Task CheckUpdatesAsync()
@@ -177,6 +246,9 @@ internal sealed class TrayContext : ApplicationContext
         if (disposing && !disposed)
         {
             disposed = true;
+            UnsubscribeNetwork();
+            automaticSwitcher.Dispose();
+            networkLookup.Dispose();
             SystemEvents.TimeChanged -= OnTimeChanged;
             SystemEvents.UserPreferenceChanged -= OnPreferenceChanged;
             activationWait.Unregister(null);

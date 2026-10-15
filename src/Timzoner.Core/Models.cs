@@ -21,6 +21,7 @@ public sealed record Settings
     public string Theme { get; init; } = "system";
     public string Language { get; init; } = "zh-CN";
     public bool StartWithWindows { get; init; }
+    public bool AutomaticTimeZone { get; init; }
     public Settings Copy() => this with { FavoriteTimeZoneIds = [.. FavoriteTimeZoneIds] };
 }
 
@@ -47,4 +48,9 @@ public interface IStartupService
 {
     bool IsEnabled();
     void SetEnabled(bool enabled);
+}
+
+public interface INetworkTimeZoneLookup
+{
+    Task<string?> GetTimeZoneIdAsync(CancellationToken cancellationToken);
 }

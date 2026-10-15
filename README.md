@@ -5,6 +5,7 @@
 A lightweight system tray app for switching the Windows 11 time zone.
 
 - Switch between favorite time zones from the tray's right-click menu.
+- Enable automatic time zone switching from the tray menu to follow network changes.
 - See the time zone currently used by Windows.
 - Search available time zones, add or remove favorites, and arrange their menu order.
 - Choose light, dark, or system appearance.
@@ -20,3 +21,5 @@ A lightweight system tray app for switching the Windows 11 time zone.
 Requires [.NET 10 Desktop Runtime for Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0). Under .NET Desktop Runtime, choose the Windows x64 installer. The SDK and ASP.NET Core Runtime are not required.
 
 If Timzoner cannot start because the runtime is missing, the .NET launch dialog provides a download link. Install the Desktop Runtime, then open Timzoner again. The default runtime location is `C:\Program Files\dotnet\`. Timzoner shares this runtime with other .NET desktop apps.
+
+Automatic switching is off by default. When enabled, [IP Info](https://ip-info.com/docs) looks up the time zone of your public network exit, so the provider sees your public IP. A VPN or proxy may affect the result. Failed lookups keep the current time zone.

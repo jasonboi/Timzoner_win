@@ -68,3 +68,13 @@
 - [SetDynamicTimeZoneInformation 与权限要求](https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/nf-timezoneapi-setdynamictimezoneinformation)
 - [Windows 权限常量](https://learn.microsoft.com/en-us/windows/win32/secauthz/privilege-constants)
 - [Inno Setup](https://jrsoftware.org/isinfo.php)
+
+## 网络自动切换
+
+托盘菜单提供一个默认关闭的开关，保存 automaticTimeZone。开启时、网络地址或可用性变化时，以及从睡眠恢复时触发查询，关闭时解除网络和恢复事件订阅，并取消待处理查询。全部运行在原进程中，不使用后台服务或周期轮询。
+
+使用 [IP Info 公开 HTTPS 接口](https://ip-info.com/docs)，无需账号或 API Key，仅从响应中读取 timezone，不保存 IP、坐标或响应正文。服务方可看到公网出口 IP，VPN 或代理可能影响结果。通过 .NET 内置 IANA 到 Windows ID 映射，沿用应用控制器完成切换和读回验证，遵循 Windows 夏令时规则。服务不可用或映射无效时保持当前时区。
+
+网络事件合并等待 5 秒，查询之间至少间隔 60 秒。查询有超时，失败最多额外重试两次，间隔 60 秒和 120 秒。HTTP 429 遵循 Retry-After，缺少该值时暂停一天。不自动提权。手动选择时区会取消本轮自动查询，后续网络事件仍可触发自动模式。关闭开关或新网络事件会丢弃旧查询结果，已提交给 Windows 的切换操作不回滚。
+
+仅公网出口变化而本地网络没有发出地址或可用性事件时，不保证立即发现。无固定轮询用于补偿这类情况。
