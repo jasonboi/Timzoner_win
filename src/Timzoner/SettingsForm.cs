@@ -7,6 +7,8 @@ internal sealed class SettingsForm : Form
 {
     private readonly AppController controller;
     private readonly Action saved;
+    private readonly Func<Task<NetworkRefreshResult>> refreshNetwork;
+    private readonly Func<string?> networkZoneName;
     private readonly Settings original;
     private readonly List<string> favorites;
     private readonly TextBox search = new() { Name = "Search", AccessibleName = "搜索时区", PlaceholderText = "搜索城市、时区名称或 ID", BorderStyle = BorderStyle.None, Dock = DockStyle.Fill, Margin = new Padding(3, 0, 3, 8) };
@@ -25,6 +27,9 @@ internal sealed class SettingsForm : Form
     private readonly Button save = ActionButton("保存", "SaveSettings", true);
     private readonly Button cancel = ActionButton("取消", "CancelSettings");
     private readonly Button languageButton = ActionButton("English", "LanguageToggle");
+    private readonly Button networkRefresh = ActionButton("刷新网络环境", "RefreshNetwork");
+    private readonly Label networkZone = new() { Name = "NetworkTimeZone", AutoSize = true, Margin = new Padding(3, 6, 3, 6) };
+    private bool refreshingNetwork;
     private readonly Label title = new() { AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
     private readonly Label orderHint = new() { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(3, 7, 3, 7) };
     private readonly Label appearanceLabel = new() { AutoSize = true, Margin = new Padding(3, 7, 10, 3) };
@@ -34,11 +39,14 @@ internal sealed class SettingsForm : Form
     private readonly Font titleFont;
     private readonly Font headingFont;
 
-    public SettingsForm(AppController controller, Action saved, Icon icon)
+    public SettingsForm(AppController controller, Action saved, Icon icon,
+        Func<Task<NetworkRefreshResult>> refreshNetwork, Func<string?> networkZoneName)
     {
         SuspendLayout();
         this.controller = controller;
         this.saved = saved;
+        this.refreshNetwork = refreshNetwork;
+        this.networkZoneName = networkZoneName;
         original = controller.GetSettings();
         languageChoice = original.Language;
         favorites = [.. original.FavoriteTimeZoneIds];
@@ -124,6 +132,14 @@ internal sealed class SettingsForm : Form
         preferences.Controls.Add(languageLabel, 0, 1);
         preferences.Controls.Add(languageButton, 1, 1);
         root.Controls.Add(preferences, 0, 3);
+        var network = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 8, 0, 0) };
+        network.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        network.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        network.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        networkZone.Dock = DockStyle.Fill;
+        network.Controls.Add(networkZone, 0, 0);
+        network.Controls.Add(Buttons(networkRefresh), 0, 1);
+        root.Controls.Add(network, 0, 4);
         root.Controls.Add(status, 0, 5);
         var footer = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = Padding.Empty };
         footer.Controls.Add(cancel); footer.Controls.Add(save);
@@ -166,6 +182,15 @@ internal sealed class SettingsForm : Form
             SetStatus(T("语言已预览，保存后生效。", "Language preview. Save to keep this choice."));
         };
         save.Click += (_, _) => Save();
+        networkRefresh.Click += async (_, _) =>
+        {
+            SetStatus("");
+            var result = await refreshNetwork();
+            if (IsDisposed) return;
+            RefreshCurrent();
+            RefreshNetworkZone();
+            if (result.Result.Status is not (SwitchStatus.Success or SwitchStatus.Unchanged)) SetStatus(result.Result.Message, true);
+        };
         cancel.Click += (_, _) => Close();
         SystemEvents.UserPreferenceChanged += PreferenceChanged;
         SystemEvents.TimeChanged += TimeChanged;
@@ -230,6 +255,8 @@ internal sealed class SettingsForm : Form
         Caption(save, T("保存", "Save"));
         Caption(cancel, T("取消", "Cancel"));
         Caption(languageButton, AppText.IsEnglish ? "简体中文" : "English");
+        SetNetworkRefreshing(refreshingNetwork);
+        RefreshNetworkZone();
         int selectedIndex = selected.SelectedIndex;
         Filter(); RefreshFavorites(selectedIndex); RefreshCurrent();
         ApplyPreview();
@@ -355,6 +382,20 @@ internal sealed class SettingsForm : Form
             current.Text = T("当前 · ", "Current · ") + (zone is null ? id : DisplayZone(zone).Name);
         }
         catch (Exception) { current.Text = T("暂时无法读取当前时区，可从托盘菜单重试。", "Unable to read the current time zone. Retry from the tray menu."); }
+    }
+
+    public void SetNetworkRefreshing(bool value)
+    {
+        refreshingNetwork = value;
+        networkRefresh.Enabled = !value;
+        networkRefresh.Text = value ? T("正在刷新…", "Refreshing…") : T("刷新网络环境", "Refresh network location");
+        networkRefresh.AccessibleName = networkRefresh.Text;
+    }
+
+    public void RefreshNetworkZone()
+    {
+        networkZone.Text = T("当前网络环境时区：", "Network time zone: ") + (networkZoneName() ?? T("未检测", "Not checked"));
+        networkZone.AccessibleName = networkZone.Text;
     }
     private void Save()
     {

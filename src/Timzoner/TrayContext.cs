@@ -20,6 +20,7 @@ internal sealed class TrayContext : ApplicationContext
     private SettingsForm? settingsForm;
     private bool disposed;
     private bool checkingUpdate;
+    private bool refreshingNetwork;
     private static string T(string chinese, string english) => AppText.Get(chinese, english);
     private static string ZoneName(Zone zone) => AppText.IsEnglish ? zone.EnglishName : zone.Name;
 
@@ -30,9 +31,14 @@ internal sealed class TrayContext : ApplicationContext
         {
             if (disposed) return;
             RefreshMenu();
+            settingsForm?.RefreshNetworkZone();
             if (result.Status is not (SwitchStatus.Success or SwitchStatus.Unchanged))
                 Notify(result.Message, ToolTipIcon.Warning);
         });
+        automaticSwitcher.DetectionChanged += _ =>
+        {
+            if (!disposed) settingsForm?.RefreshNetworkZone();
+        };
         _ = dispatcher.Handle;
         dispatcher.FormClosed += (_, _) => ExitThread();
         appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? (Icon)SystemIcons.Application.Clone();
@@ -68,6 +74,7 @@ internal sealed class TrayContext : ApplicationContext
 
     private void RefreshMenu()
     {
+        settingsForm?.SetNetworkRefreshing(refreshingNetwork);
         Theme.PaintMenu(menu);
         foreach (ToolStripItem item in menu.Items.Cast<ToolStripItem>().ToArray()) item.Dispose();
         menu.Items.Clear();
@@ -101,10 +108,25 @@ internal sealed class TrayContext : ApplicationContext
         {
             Name = "AutomaticTimeZone",
             Checked = controller.GetSettings().AutomaticTimeZone,
-            Enabled = !controller.IsReadOnly
+            Enabled = !controller.IsReadOnly && !refreshingNetwork
         };
         automatic.Click += (_, _) => ToggleAutomaticMode();
         menu.Items.Add(automatic);
+        var refresh = new ToolStripMenuItem(refreshingNetwork ? T("正在刷新…", "Refreshing…") : T("刷新网络环境", "Refresh network location"))
+        {
+            Name = "RefreshNetwork",
+            Enabled = !refreshingNetwork && !controller.IsSwitching
+        };
+        refresh.Click += async (_, _) =>
+        {
+            var result = await RefreshNetworkAsync();
+            if (disposed) return;
+            string message = result.ZoneId is { } id ? T("网络时区：", "Network time zone: ") + NetworkZoneName(id) : result.Result.Message;
+            if (result.ZoneId is not null && result.Result.Status is not (SwitchStatus.Success or SwitchStatus.Unchanged))
+                message += Environment.NewLine + result.Result.Message;
+            Notify(message, result.Result.Status is SwitchStatus.Success or SwitchStatus.Unchanged ? ToolTipIcon.Info : ToolTipIcon.Warning);
+        };
+        menu.Items.Add(refresh);
         menu.Items.Add(T("配置…", "Settings…"), null, (_, _) => OpenSettings());
         menu.Items.Add(checkingUpdate ? T("正在检查更新…", "Checking for updates…") : T("检查更新…", "Check for updates…"), null, async (_, _) => await CheckUpdatesAsync()).Enabled = !checkingUpdate;
         menu.Items.Add(T("Windows 日期和时间设置", "Windows date and time settings"), null, (_, _) => OpenSystemSettings());
@@ -140,6 +162,36 @@ internal sealed class TrayContext : ApplicationContext
         if (!result.Success) Notify(result.Message, ToolTipIcon.Warning);
         else UpdateAutomaticMode();
         RefreshMenu();
+    }
+
+    private string NetworkZoneName(string id)
+    {
+        var zone = controller.Zones.FirstOrDefault(zone => string.Equals(zone.Id, id, StringComparison.OrdinalIgnoreCase));
+        return zone is null ? id : ZoneName(zone);
+    }
+
+    private async Task<NetworkRefreshResult> RefreshNetworkAsync()
+    {
+        if (refreshingNetwork || controller.IsSwitching)
+            return new(null, new(SwitchStatus.Busy, T("正在处理，请稍候。", "An operation is in progress. Please wait.")));
+        refreshingNetwork = true;
+        settingsForm?.SetNetworkRefreshing(true);
+        RefreshMenu();
+        try
+        {
+            var result = await automaticSwitcher.RefreshAsync();
+            if (!disposed) settingsForm?.RefreshNetworkZone();
+            return result;
+        }
+        finally
+        {
+            refreshingNetwork = false;
+            if (!disposed)
+            {
+                settingsForm?.SetNetworkRefreshing(false);
+                RefreshMenu();
+            }
+        }
     }
 
     private void UpdateAutomaticMode()
@@ -225,7 +277,9 @@ internal sealed class TrayContext : ApplicationContext
     {
         if (settingsForm is null || settingsForm.IsDisposed)
         {
-            settingsForm = new SettingsForm(controller, RefreshMenu, appIcon);
+            settingsForm = new SettingsForm(controller, RefreshMenu, appIcon, RefreshNetworkAsync,
+                () => automaticSwitcher.DetectedZoneId is { } id ? NetworkZoneName(id) : null);
+            settingsForm.SetNetworkRefreshing(refreshingNetwork);
             settingsForm.FormClosed += (_, _) => settingsForm = null;
             settingsForm.Show();
         }

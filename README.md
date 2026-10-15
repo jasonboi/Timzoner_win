@@ -6,6 +6,7 @@ A lightweight system tray app for switching the Windows 11 time zone.
 
 - Switch between favorite time zones from the tray's right-click menu.
 - Enable automatic time zone switching from the tray menu to follow network changes.
+- Refresh network location on demand and view its time zone, applying it when automatic switching is enabled.
 - See the time zone currently used by Windows.
 - Search available time zones, add or remove favorites, and arrange their menu order.
 - Choose light, dark, or system appearance.

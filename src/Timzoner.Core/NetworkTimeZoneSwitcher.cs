@@ -10,6 +10,8 @@ public sealed record NetworkTimeZoneOptions
     public TimeSpan QueryTimeout { get; init; } = TimeSpan.FromSeconds(15);
 }
 
+public sealed record NetworkRefreshResult(string? ZoneId, SwitchResult Result);
+
 // Call scheduling methods from the UI synchronization context. Awaited work resumes there before changing settings or notifying the UI.
 public sealed class NetworkTimeZoneSwitcher : IDisposable
 {
@@ -19,10 +21,14 @@ public sealed class NetworkTimeZoneSwitcher : IDisposable
     private readonly TimeProvider clock;
     private readonly NetworkTimeZoneOptions options;
     private CancellationTokenSource? pending;
+    private CancellationTokenSource? manual;
     private long? lastQuery;
     private bool enabled;
     private bool available = true;
     private bool disposed;
+
+    public string? DetectedZoneId { get; private set; }
+    public event Action<string?>? DetectionChanged;
 
     public NetworkTimeZoneSwitcher(AppController controller, INetworkTimeZoneLookup lookup, Action<SwitchResult> completed,
         TimeProvider? timeProvider = null, NetworkTimeZoneOptions? options = null)
@@ -39,8 +45,14 @@ public sealed class NetworkTimeZoneSwitcher : IDisposable
 
     public void SetEnabled(bool value)
     {
-        if (disposed || enabled == value) return;
+        if (disposed) return;
+        if (enabled == value)
+        {
+            if (!value) CancelPending();
+            return;
+        }
         enabled = value;
+        if (enabled && manual is not null) return;
         CancelPending();
         if (enabled && available) Schedule();
     }
@@ -50,6 +62,7 @@ public sealed class NetworkTimeZoneSwitcher : IDisposable
         if (disposed) return;
         this.available = available;
         CancelPending();
+        SetDetectedZoneId(null);
         if (enabled && available) Schedule();
     }
 
@@ -58,6 +71,61 @@ public sealed class NetworkTimeZoneSwitcher : IDisposable
         var previous = pending;
         pending = null;
         previous?.Cancel();
+    }
+
+    public async Task<NetworkRefreshResult> RefreshAsync()
+    {
+        if (disposed) return RefreshCancelled();
+        if (manual is not null) return new(null, new(SwitchStatus.Busy, AppText.Get("正在刷新，请稍候。", "A network refresh is in progress. Please wait.")));
+        CancelPending();
+        var round = new CancellationTokenSource();
+        manual = pending = round;
+        try
+        {
+            SetDetectedZoneId(null);
+            lastQuery = clock.GetTimestamp();
+            var id = await QueryAsync(round.Token);
+            if (!IsManualCurrent(round)) return RefreshCancelled();
+            var zone = controller.Zones.FirstOrDefault(zone => string.Equals(zone.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (zone is null) return new(null, new(SwitchStatus.InvalidZone, AppText.Get("网络位置未返回有效时区。", "The network location did not provide a valid time zone.")));
+            SetDetectedZoneId(zone.Id);
+            if (!enabled)
+                return new(zone.Id, new(SwitchStatus.Unchanged, AppText.Get("网络时区：", "Network time zone: ") + zone.Id));
+            var result = await controller.SwitchAsync(zone.Id, false);
+            return IsManualCurrent(round) ? new(zone.Id, result) : RefreshCancelled();
+        }
+        catch (OperationCanceledException) when (round.IsCancellationRequested) { return RefreshCancelled(); }
+        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
+        {
+            return new(null, new(SwitchStatus.Failed, AppText.Get("网络时区查询超时，请重试。", "The network time zone query timed out. Please retry.")));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or JsonException)
+        {
+            return new(null, new(SwitchStatus.Failed, AppText.Get("无法获取网络时区，请重试。", "Unable to find the network time zone. Please retry.")));
+        }
+        finally
+        {
+            if (ReferenceEquals(pending, round)) pending = null;
+            manual = null;
+            round.Dispose();
+        }
+    }
+
+    private bool IsManualCurrent(CancellationTokenSource round) => !disposed && ReferenceEquals(pending, round) && !round.IsCancellationRequested;
+    private static NetworkRefreshResult RefreshCancelled() => new(null, new(SwitchStatus.Cancelled, AppText.Get("已取消网络刷新。", "Network refresh cancelled.")));
+
+    private void SetDetectedZoneId(string? id)
+    {
+        if (string.Equals(DetectedZoneId, id, StringComparison.OrdinalIgnoreCase)) return;
+        DetectedZoneId = id;
+        DetectionChanged?.Invoke(id);
+    }
+
+    private async Task<string?> QueryAsync(CancellationToken cancellationToken)
+    {
+        using var query = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        try { return await lookup.GetTimeZoneIdAsync(query.Token).WaitAsync(options.QueryTimeout, clock, cancellationToken); }
+        finally { query.Cancel(); }
     }
 
     private void Schedule()
@@ -83,12 +151,7 @@ public sealed class NetworkTimeZoneSwitcher : IDisposable
                 string? id;
                 try
                 {
-                    using var query = CancellationTokenSource.CreateLinkedTokenSource(round.Token);
-                    try
-                    {
-                        id = await lookup.GetTimeZoneIdAsync(query.Token).WaitAsync(options.QueryTimeout, clock, round.Token);
-                    }
-                    finally { query.Cancel(); }
+                    id = await QueryAsync(round.Token);
                     if (string.IsNullOrWhiteSpace(id)) throw new InvalidDataException(AppText.Get("网络位置未返回有效时区。", "The network location did not provide a valid time zone."));
                 }
                 catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or JsonException or TimeoutException or OperationCanceledException)
@@ -103,6 +166,8 @@ public sealed class NetworkTimeZoneSwitcher : IDisposable
                     return;
                 }
                 if (!IsCurrent(round)) return;
+                var detected = controller.Zones.FirstOrDefault(zone => string.Equals(zone.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (detected is not null) SetDetectedZoneId(detected.Id);
                 var result = await controller.SwitchAsync(id, false);
                 if (IsCurrent(round) && result.Status != SwitchStatus.Unchanged) completed(result);
                 return;

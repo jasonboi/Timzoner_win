@@ -41,6 +41,7 @@ public sealed class NetworkTimeZoneLookup : INetworkTimeZoneLookup, IDisposable
             UseCookies = false,
             ConnectTimeout = TimeSpan.FromSeconds(5),
             PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30),
+            PooledConnectionLifetime = TimeSpan.Zero,
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
             MaxConnectionsPerServer = 1
         }) { Timeout = TimeSpan.FromSeconds(12) };
